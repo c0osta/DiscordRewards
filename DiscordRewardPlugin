@@ -1,0 +1,69 @@
+//Przykładowy kod stworzony przez costa
+//Owy kod odpowiada za nagradzanie gracza za dołączenie na discorda
+
+public class DiscordRewardPlugin extends JavaPlugin {
+
+    private String discordChannelId = "channel_id_here"; // ID kanału Discord
+    private String discordBotToken = "bot_token_here"; // Token bota Discord
+    private String minecraftReward = "minecraft:diamond"; // Nagroda w Minecraft
+
+    private JDA jda;
+    private Map<String, Boolean> players;
+
+    @Override
+    public void onEnable() {
+        // Inicjalizacja JDA
+        try {
+            jda = JDABuilder.createDefault(discordBotToken).build();
+        } catch (LoginException e) {
+            e.printStackTrace();
+        }
+        
+        players = new HashMap<>();
+
+        // Rejestracja listenera dla eventów JDA
+        jda.addEventListener(new DiscordListener());
+
+        // Rejestracja listenera dla eventów Minecraft
+        getServer().getPluginManager().registerEvents(new MinecraftListener(), this);
+    }
+
+    private class DiscordListener extends ListenerAdapter {
+
+        @Override
+        public void onMessageReceived(MessageReceivedEvent event) {
+            // Sprawdzenie czy wiadomość została wysłana na poprawnym kanale
+            if (event.getChannel().getId().equals(discordChannelId)) {
+                String message = event.getMessage().getContentRaw();
+                // Sprawdzenie czy wiadomość zawiera prefiks i nazwę gracza
+                if (message.startsWith("!reward ") && message.length() > 8) {
+                    String playerName = message.substring(8);
+                    // Sprawdzenie czy gracz jest online
+                    Player player = Bukkit.getPlayerExact(playerName);
+                    if (player != null && player.isOnline()) {
+                        player.getInventory().addItem(new ItemStack(Material.getMaterial(minecraftReward.toUpperCase())));
+                        event.getChannel().sendMessage("Nagroda została przyznana na nick " + playerName + ".\n" +
+                                "Administracja nie odpowiada za sytuacje w których nagroda nie mogła zostać dodana do ekwipunku.\n\n" +
+                                "Jeśli chcesz odebrać nagrodę wejdź na serwer i napisz swój nick na tym kanale.").queue();
+                        players.put(playerName, true);
+                    } else {
+                        event.getAuthor().openPrivateChannel().flatMap(channel ->
+                                channel.sendMessage("Nie mogę przyznać nagrody dla gracza " + playerName + ", ponieważ nie znajduje się na serwerze Minecraft.")).queue();
+                    }
+                }
+            }
+        }
+    }
+
+    private class MinecraftListener implements Listener {
+
+        @EventHandler
+        public void onPlayerJoin(PlayerJoinEvent event) {
+            // Sprawdzenie czy gracz napisał już swoją nazwę na kanale Discord
+            if (players.containsKey(event.getPlayer().getName()) && players.get(event.getPlayer().getName())) {
+                event.getPlayer().getInventory().addItem(new ItemStack(Material.getMaterial(minecraftReward.toUpperCase())));
+                players.put(event.getPlayer().getName(), false);
+            }
+        }
+    }
+}
